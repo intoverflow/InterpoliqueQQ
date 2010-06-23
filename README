@@ -1,0 +1,7 @@
+This is an implementation of Dan Kaminsky's "Interpolique" as a Haskell
+quasi-quoter.
+
+More information:
+http://recursion.com/interpolique.html
+http://intoverflow.wordpress.com/2010/06/23/syntactic-support-for-kaminskys-interpolique-in-haskell
+
