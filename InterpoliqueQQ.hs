@@ -1,5 +1,9 @@
-{-# LANGUAGE TemplateHaskell, QuasiQuotes, DeriveDataTypeable #-}
-module InterpoliqueQQ (interpolique, runQuery) where
+{-# LANGUAGE
+	TemplateHaskell,
+	QuasiQuotes,
+	DeriveDataTypeable,
+	TypeSynonymInstances #-}
+module InterpoliqueQQ (interpolique, runQuery, InterpoliqueEscape(..)) where
 
 import Data.Typeable
 import Data.Data
@@ -23,6 +27,22 @@ import Codec.Binary.Base64 (encode)
 data InterpoliquedString = InterpoliquedString String
   deriving Show
 
+-- This class allows us to use Interpolique for all of the types
+-- that are allowed in a SQL query: strings, floats, ints, bools,
+-- etc.  It even allows us to escape them in whatever crazy way we
+-- want (strings with base64, for example).
+-- Users can implement their own instances, giving themselves the
+-- ability to escape not-obviously-SQL-compatible types on the fly.
+class InterpoliqueEscape a where
+  escapique :: a -> String
+
+instance InterpoliqueEscape String where
+  escapique s = "b64d(" ++ (encode . unpack . pack $ s) ++ ")"
+
+instance InterpoliqueEscape Double where escapique = show
+instance InterpoliqueEscape Int    where escapique = show
+instance InterpoliqueEscape Bool   where escapique = show
+
 lexer = P.makeTokenParser haskellDef
 identifier = P.identifier lexer
 
@@ -42,9 +62,7 @@ parseInterpolique =
 		i <- (try (identifier >>= return . Just)) <|> (return Nothing)
 		case i of
 			Just i' -> return [ InterpoliqueSQL sql
-					  , InterpoliqueSQL "b64d(\""
 					  , InterpoliqueVar i'
-					  , InterpoliqueSQL "\")"
 					  ]
 			_	-> return [InterpoliqueSQL sql]
 	interpoliqued' <- many anyChar
@@ -58,10 +76,9 @@ runQuery (InterpoliquedString s) = putStrLn s
 interpolique = QuasiQuoter parseInterpoliqueExp parseInterpoliquePat
 
 
-b64enc = encode . unpack . pack
-
 antiE :: InterpoliqueComponent -> Maybe TH.ExpQ
-antiE (InterpoliqueVar v) = Just $ TH.appE [| b64enc |] (TH.varE $ TH.mkName v)
+antiE (InterpoliqueVar v) = Just $ TH.appE [| escapique |]
+				   (TH.varE $ TH.mkName v)
 antiE (InterpoliqueSQL s) = Just $ TH.litE $ TH.stringL s
 
 parseInterpoliqueExp :: String -> TH.Q TH.Exp
