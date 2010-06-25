@@ -1,7 +1,12 @@
 This is an implementation of Dan Kaminsky's "Interpolique" as a Haskell
-quasi-quoter.
+quasi-quoter.  See Test.hs for examples.
 
 More information:
 http://recursion.com/interpolique.html
 http://intoverflow.wordpress.com/2010/06/23/syntactic-support-for-kaminskys-interpolique-in-haskell
+
+Also shown here: the Taint monad, which shows how we can use rank-2 types and
+monads to track the progression of tainted data, and even use this to prevent
+tainted data from escaping a given context before it has been scrubbed.  See
+TestTaint.hs for examples.
 
