@@ -1,14 +1,11 @@
 {-# LANGUAGE
 	Rank2Types,
-	NoMonomorphismRestriction #-}
+	NoMonomorphismRestriction,
+	QuasiQuotes #-}
 module TestNestedTaint where
 
--- used to fake some db stuff
-import Data.ByteString (unpack)
-import Data.ByteString.Char8 (pack)
-import Codec.Binary.Base64 (encode)
-
 import Taint
+import InterpoliqueQQ
 
 import Control.Monad.Trans
 
@@ -38,33 +35,25 @@ import Control.Monad.Trans
     though the added complexity would likely obfuscate this demonstration.
 -}
 
+import FakeDatabase
+import FakeXML
+
 webFramework :: Show a => (forall web . TaintT web IO a) -> IO ()
 webFramework requestHandler =
      do response <- runTaintT requestHandler
 			      [("username", "dakami"), ("docID", "7")]
 	putStrLn $ "Response: " ++ show response
 
-runDB :: Monad m => (forall db . TaintT db m (Tainted db a)) -> (forall db . Tainted db a -> m a) -> m a
-runDB query clenser = runTaintT (query >>= (lift . clenser)) theDB
-  where theDB = [ ("thedoc-broker-4", "brkbrkbrk << < > ")
-		, ("thedoc-dakami-7", "woot woot &&& woot <foo>")
-		, ("thedoc-dakami-6", "with lulz ';")
-		]
-
-
-query queryString =
-     do lift $ putStrLn "Executing query:"
-	return ()
-
 -- And now for our imaginary web page
 ourResponse =
      do uname <- getData "username"
 	docID <- getData "docID"
-	-- docQuery <- [$interpolique| thedoc-^^username-^^docID ]
-	-- doc <- runDB (query docQuery) $ \doc -> [$interpolique| User's document: ^^doc |]
-	-- return doc
-	return ()
+	-- Our DB uses totally crazy notation for queries:
+	docQuery <- return undefined -- [$interpolique| thedoc-^^uname-^^docID ]
+	let doc = runDB (query docQuery)
+			(\doc' -> [$interpolique| User's document: ^^doc' |])
+	return doc
 
 
-theSite = webFramework ourResponse
+ourSite = webFramework ourResponse
 
