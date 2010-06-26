@@ -3,7 +3,14 @@
 	NoMonomorphismRestriction #-}
 module TestNestedTaint where
 
+-- used to fake some db stuff
+import Data.ByteString (unpack)
+import Data.ByteString.Char8 (pack)
+import Codec.Binary.Base64 (encode)
+
 import Taint
+
+import Control.Monad.Trans
 
 {-
     In this example we have a hypothetical web framework which has a couple
@@ -31,20 +38,33 @@ import Taint
     though the added complexity would likely obfuscate this demonstration.
 -}
 
-webFramework :: Show a => (forall t . TaintT t IO a) -> IO ()
+webFramework :: Show a => (forall web . TaintT web IO a) -> IO ()
 webFramework requestHandler =
      do response <- runTaintT requestHandler
 			      [("username", "dakami"), ("docID", "7")]
-	putStrLn $ show response
+	putStrLn $ "Response: " ++ show response
+
+runDB :: Monad m => (forall db . TaintT db m (Tainted db a)) -> (forall db . Tainted db a -> m a) -> m a
+runDB query clenser = runTaintT (query >>= (lift . clenser)) theDB
+  where theDB = [ ("thedoc-broker-4", "brkbrkbrk << < > ")
+		, ("thedoc-dakami-7", "woot woot &&& woot <foo>")
+		, ("thedoc-dakami-6", "with lulz ';")
+		]
 
 
--- This function helps in type inference, nothing more
-assertTaint :: Taint t a -> Taint t a
-assertTaint = id
+query queryString =
+     do lift $ putStrLn "Executing query:"
+	return ()
 
--- Here is some code that we are allowed to write
-useTaintedData = assertTaint $
-     do username <- getData "username"
-	return username
+-- And now for our imaginary web page
+ourResponse =
+     do uname <- getData "username"
+	docID <- getData "docID"
+	-- docQuery <- [$interpolique| thedoc-^^username-^^docID ]
+	-- doc <- runDB (query docQuery) $ \doc -> [$interpolique| User's document: ^^doc |]
+	-- return doc
+	return ()
 
+
+theSite = webFramework ourResponse
 
