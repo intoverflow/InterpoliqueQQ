@@ -6,7 +6,10 @@
 	FlexibleInstances,
 	TypeSynonymInstances,
 	Rank2Types #-}
-module Taint (Taint, runTaint, TaintT, runTaintT, Tainted, untaint, getData) where
+module Taint ( Taint, runTaint, nestTaint
+	     , TaintT, runTaintT, nestTaintT
+	     , getData, Tainted, untaint
+	     ) where
 
 import "mtl" Control.Monad.Identity
 import "mtl" Control.Monad.Trans
@@ -50,13 +53,40 @@ class Scrub a b | a -> b where
 instance Scrub String String where
   untaint (Tainted d) = return $ encode . unpack . pack $ d
 
+instance Scrub Int Int where
+  untaint (Tainted d) = return d
+
 instance (Monad m) => Scrub (m String) (m String) where
   untaint (Tainted md) = return $
 			     do dirty <- md
 				let clean= runTaint (taint dirty >>= untaint) []
 				return clean
 
-
 getData :: Monad m => String -> TaintT t m (Tainted t (Maybe String))
 getData key = TaintT $ \kv -> return $ Tainted (lookup key kv)
+
+-- Don't export this!  It's part of the security kernel, used to implement
+-- sub-tainting
+-- getAllData :: Monad m => TaintT t m [(String, String)]
+-- getAllData = TaintT $ \kv -> return kv
+
+
+-- The following is for supporting sub-taint, thereby giving us lattices of
+-- tainting
+
+newtype SubTaintT r s m = SubTaintT (forall a. TaintT r m a -> TaintT s m a)
+
+nestTaintT :: Monad m
+	   => (forall s . SubTaintT r s m -> TaintT s m a)
+	   -> TaintT r m a
+nestTaintT body = TaintT $ \kv ->
+     do let witness (TaintT ma) = lift $
+	     do a <- ma kv
+		-- TODO: this is a natural place for automatic untainting
+		return a
+	runTaintT (body (SubTaintT witness)) kv
+
+nestTaint :: (forall s . SubTaintT r s Identity -> Taint s a)
+	  -> Taint r a
+nestTaint body = nestTaintT body
 
