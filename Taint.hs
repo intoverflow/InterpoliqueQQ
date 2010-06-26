@@ -5,7 +5,6 @@
 	MultiParamTypeClasses,
 	FlexibleInstances,
 	TypeSynonymInstances,
-	UndecidableInstances,
 	Rank2Types #-}
 module Taint (Taint, runTaint, TaintT, runTaintT, Tainted, untaint, getData) where
 
@@ -51,11 +50,11 @@ class Scrub a b | a -> b where
 instance Scrub String String where
   untaint (Tainted d) = return $ encode . unpack . pack $ d
 
--- This requires UndecidableInstances
-instance Scrub a b => Scrub (Maybe a) (Maybe b) where
-  untaint (Tainted Nothing)  = return Nothing
-  untaint (Tainted (Just d)) = do d' <- (taint d) >>= untaint
-  				  return $ Just d'
+instance (Monad m) => Scrub (m String) (m String) where
+  untaint (Tainted md) = return $
+			     do dirty <- md
+				let clean= runTaint (taint dirty >>= untaint) []
+				return clean
 
 
 getData :: Monad m => String -> TaintT t m (Tainted t (Maybe String))
