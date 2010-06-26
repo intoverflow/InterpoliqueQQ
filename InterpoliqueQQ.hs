@@ -26,16 +26,6 @@ import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (haskellDef)
 
-import Token
-
-{-
-import Data.ByteString (unpack)
-import Data.ByteString.Char8 (pack)
--- This next import requires the dataenc package on Hackage
--- (cabal install dataenc)
-import Codec.Binary.Base64 (encode)
--}
-
 import Kernel
 
 
@@ -59,14 +49,29 @@ projInterpoliquedString (InterpoliquedString s) = s
 -- ability to escape not-obviously-SQL-compatible types on the fly.
 -- The only way to make an instance of this class is via the Scrub
 -- interface defined in the security kernel
+data ContextString ctx = ContextString ctx String
+projContextString :: ContextString ctx -> String
+projContextString (ContextString ctx s) = s
+mcConcat :: [Maybe (ContextString ctx)] -> Maybe (InterpoliquedString ctx)
+mcConcat mcss =
+     do let mcss' = sequence mcss -- converts from [Maybe a] to Maybe [a]
+	mcss' >>= \l -> return $ InterpoliquedString $ concat $ map projContextString l
+
 class InterpoliqueEscape ctx a where
-  escapique :: Monad m => ctx -> Tainted t (Maybe a) -> TaintT t m (Maybe String)
+  escapique :: Monad m => Tainted t (Maybe a)
+		       -> TaintT t m (Maybe (ContextString ctx))
+
+contextUntaint :: (Scrub ctx a b, Monad m) => ctx -> Tainted t a -> TaintT t m (ctx, b)
+contextUntaint ctx a =
+     do b <- untaint ctx a
+	return (ctx, b)
 
 -- This requires UndecidableInstances
 instance (Scrub ctx a String) => InterpoliqueEscape ctx a where
-  escapique ctx (Tainted Nothing) = return Nothing
-  escapique ctx (Tainted (Just tainted)) = do c <- untaint ctx (Tainted tainted)
-					      return $ Just c
+  escapique (Tainted Nothing) = return Nothing
+  escapique (Tainted (Just tainted)) =
+	     do (ctx, c) <- contextUntaint undefined (Tainted tainted)
+		return $ Just (ContextString ctx c)
 
 
 -- Stuff for parsing Interpolique code
@@ -99,21 +104,45 @@ parseInterpolique =
 -- Implementing the quasi-quoter
 interpolique = QuasiQuoter parseInterpoliqueExp parseInterpoliquePat
 
-antiE :: ctx -> InterpoliqueComponent -> Maybe TH.ExpQ
-antiE _ (InterpoliqueVar v) =
-		Just $ (TH.appE [| escapique FakeDatabase |])
-		       (TH.varE $ TH.mkName v)
+antiE :: InterpoliqueComponent -> Maybe TH.ExpQ
+antiE (InterpoliqueVar v) = Just $ TH.appE [| escapique |]
+					   (TH.varE $ TH.mkName v)
+antiE (InterpoliqueSQL s) = Just $ TH.appE [| return . Just . ContextString undefined |]
+					   (TH.litE $ TH.stringL s)
+{-
+antiE :: TH.Name -> InterpoliqueComponent -> Maybe TH.ExpQ
+antiE ctx (InterpoliqueVar v) = Just $
+ 	  foldl (TH.appE)
+		[| escapique |]
+		[ TH.sigE (TH.varE $ TH.mkName "undefined") (TH.varT ctx)
+		, TH.varE $ TH.mkName v
+		]
 antiE _ (InterpoliqueSQL s) =
 		Just $ (TH.appE [| return . Just |])
 		       (TH.litE $ TH.stringL s)
+-}
 
 parseInterpoliqueExp :: String -> TH.Q TH.Exp
 parseInterpoliqueExp s =
      do p <- parse' s
-	let p' = dataToExpQ (const Nothing `extQ` (antiE FakeDatabase)) p
-	TH.appE [| \ss -> do ss' <- sequence ss
-			     let str = sequence ss'
-			     return (str >>= (return . InterpoliquedString . concat)) |] p'
+	let p' = dataToExpQ (const Nothing `extQ` antiE) p
+	let builder = [| \ss -> do ss' <- sequence ss
+				   return $ mcConcat ss' |]
+	TH.appE builder p'
+{-
+parseInterpoliqueExp s =
+     do ctx <- TH.newName "ctx"
+	p <- parse' s
+	let p' = dataToExpQ (const Nothing `extQ` (antiE ctx)) p
+	let builder = [| \ss ->
+			  do ss' <- sequence ss -- convert [m (Maybe a)] to m [Maybe a]
+			     let str = sequence ss' -- convert [Maybe a] to Maybe [a]
+			     return (str >>= (return . InterpoliquedString . concat))
+		   |]
+	let sig = (TH.AppT (TH.ConT ''InterpoliquedString) (TH.VarT ctx))
+	TH.sigE (TH.appE builder p')
+		(return $ TH.ForallT [TH.PlainTV ctx] [] sig)
+-}
 
 parseInterpoliquePat :: String -> TH.Q TH.Pat
 parseInterpoliquePat s = parse' s >>= dataToPatQ (const Nothing)

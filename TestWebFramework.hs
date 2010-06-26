@@ -1,6 +1,7 @@
 {-# LANGUAGE
 	Rank2Types,
 	NoMonomorphismRestriction,
+	FlexibleContexts,
 	QuasiQuotes #-}
 module TestNestedTaint where
 
@@ -38,21 +39,28 @@ import Control.Monad.Trans
 import FakeDatabase
 import FakeXML
 
-webFramework :: Show a => (forall web . TaintT web IO a) -> IO ()
+webFramework :: (forall web . TaintT web IO (Maybe (InterpoliquedString FakeXML))) -> IO ()
 webFramework requestHandler =
      do response <- runTaintT requestHandler
 			      [("username", "dakami"), ("docID", "7")]
-	putStrLn $ "Response: " ++ show response
+	case response of
+		Nothing -> putStrLn $ "Error: response was `Nothing'"
+		Just is -> do putStrLn "Response:"
+			      putStrLn $ projInterpoliquedString is
 
 -- And now for our imaginary web page
+ourResponse :: Scrub FakeXML String String
+	    => TaintT web IO (Maybe (InterpoliquedString FakeXML))
 ourResponse =
      do uname <- getData "username"
 	docID <- getData "docID"
 	-- Our DB uses totally crazy notation for queries:
-	docQuery <- return undefined -- [$interpolique| thedoc-^^uname-^^docID ]
-	let doc = runDB (query docQuery)
-			(\doc' -> [$interpolique| User's document: ^^doc' |])
-	return doc
+	docQuery <- [$interpolique| thedoc-^^uname-^^docID |]
+	case docQuery of
+		Nothing -> return Nothing
+		Just docQuery' -> let doc = runDB (query docQuery')
+						  (\doc' -> [$interpolique| User's document: ^^doc' |])
+				  in lift doc
 
 
 ourSite = webFramework ourResponse

@@ -3,6 +3,7 @@ module Test where
 
 import InterpoliqueQQ
 import FakeDatabase
+import FakeXML
 
 import Kernel
 
@@ -13,11 +14,23 @@ query :: TaintT db IO (Maybe (InterpoliquedString FakeDatabase))
 query = [$interpolique| insert into posts values(^^author , ^^content ); |]
 
 
-{-
-author2 = "2"
-content2 = "happy content"
-query2 = [$interpolique| insert into posts values(^^author2 , ^^content2 ); |] :: InterpoliquedString FakeDatabase
+uname = Tainted (Just "cauchy")
+about = Tainted (Just "french mathematician")
+xml :: TaintT db IO (Maybe (InterpoliquedString FakeXML))
+xml = [$interpolique|
+	<user>
+		<username>^^uname</username>
+		<about>^^about</about>
+	</user>
+      |]
 
+printInterpolique :: IO (Maybe (InterpoliquedString a)) -> IO ()
+printInterpolique ioa = do a <- ioa
+			   printInterpolique' a
+  where printInterpolique' Nothing   = putStrLn "Nothing"
+	printInterpolique' (Just is) = putStrLn $ projInterpoliquedString is
+
+{-
 -- We can interpolique doubles, ints, and bools
 someDouble = 3.14159 :: Double
 someInt = 2 :: Int

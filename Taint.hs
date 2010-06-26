@@ -5,7 +5,7 @@ module Taint ( Taint, runTaint
 	     , TaintT, runTaintT, nestTaintT
 	     , SubTaintT(..)
 	     , getData
-	     , Tainted
+	     , Scrub, Tainted
 	     ) where
 
 import "mtl" Control.Monad.Trans

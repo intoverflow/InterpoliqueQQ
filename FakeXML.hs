@@ -30,7 +30,8 @@ import "dataenc" Codec.Binary.Base64 (encode)
 data FakeXML = FakeXML
 
 instance Scrub FakeXML String String where
-  untaint _ (Tainted d) = return $ encode . unpack . pack $ d
+  untaint _ (Tainted d) = do let d' = encode . unpack . pack $ d
+			     return $ "<base64>" ++ d' ++ "</base64>"
 instance Scrub FakeXML Int String where
   untaint _ (Tainted d) = return $ show d
 instance Scrub FakeXML Double String where
