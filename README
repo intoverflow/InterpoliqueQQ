@@ -7,6 +7,21 @@ http://intoverflow.wordpress.com/2010/06/23/syntactic-support-for-kaminskys-inte
 
 Also shown here: the Taint monad, which shows how we can use rank-2 types and
 monads to track the progression of tainted data, and even use this to prevent
-tainted data from escaping a given context before it has been scrubbed.  See
-TestTaint.hs for examples.
+tainted data from escaping a given context before it has been scrubbed.
+Kernel.hs is a ``security kernel'' for the tainting system and is intended to be
+used by library authors and *not* application develoeprs.  (GHC provides enough
+static analysis that this design requirement can be enforced using existing
+tools.)
+
+FakeDatabase.hs and FakeXML.hs demonstrate stubbed-out libraries for both a
+database server and XML generation library.  They provide examples of how
+Interpolique can be destiation-context-sensitive, in that the same syntax can be
+used to safely escape a string, and the particular style of escaping can be
+automatically determined based on who the escaping is being performed for.
+(That is, escaping for a database is different than escaping for XML, and this
+implementation is able to use type inference to automatically determine which
+it is that the programmer needs.)
+
+TestWebFramework.hs shows an example of destination-context-sensitive escaping
+with Interpolique.
 
